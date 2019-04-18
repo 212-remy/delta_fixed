@@ -31,6 +31,7 @@ class Bot:
         Interface from Python to ODrive
 
         Daniel J. Gonzalez - dgonz@mit.edu
+        Edited by R.E.M.Y.
         2.12 Intro to Robotics Spring 2019
         """
 
