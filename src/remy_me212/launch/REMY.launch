@@ -1,0 +1,3 @@
+<launch>
+  <node name="odrive" pkg="remy_me212" type="inverse_kinematic_odrive.py" />
+</launch> 

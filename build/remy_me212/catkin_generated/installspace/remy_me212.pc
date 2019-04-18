@@ -1,0 +1,8 @@
+prefix=/home/robot/catkin_ws/install
+
+Name: remy_me212
+Description: Description of remy_me212
+Version: 0.0.0
+Cflags: 
+Libs: -L/home/robot/catkin_ws/install/lib 
+Requires: 
