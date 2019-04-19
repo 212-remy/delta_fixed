@@ -7,6 +7,8 @@ import odrive
 from fibre.utils import Logger
 import logging
 from odrive.enums import *
+import kinematicsSolver as kin
+import time
 
 import time
 import math
@@ -17,10 +19,15 @@ import signal
 import sys
 import numpy as np
 
-pi = np.pi #3.1415927
+
 #####################################
 realBot = True
 #####################################
+
+# if not realBot:
+#    import robot212_virtual as bot
+
+pi = np.pi  # 3.1415927
 
 
 class Bot:
@@ -493,53 +500,47 @@ class Bot:
     def get_rad_all(self):
         return self.count2Rad(self.get_cnt_all())
 
-if realBot:
-    bot = Bot()
-
-else:
-    import robot212_virtual as bot
-
-import kinematicsSolver as kin
-import time
-
-#bot.trajMoveRad((0,0,0))
-deltaKin = kin.deltaSolver(realBot=realBot)
-if realBot:
-    bot.full_init()
-    for i in range(3):
-        bot.test_one(i, mytime=.1)
-#    bot.spider()
-
-
-def move(x, y, z):
-    endpos = (x, y, z)
-    thtDes = deltaKin.IK((x, y, z))
-
-    assert (deltaKin.FK(thtDes) - endpos < .1).all()
-    if all([deltaKin.check_constraints(i + 1, endpos, thtDes[i]) for i in range(3)]):
-        print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
-        print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (thtDes[0], thtDes[1], thtDes[2]))
-        bot.trajMoveRad(thtDes, 2 * pi / 8,
-                        2 * pi / 8)  # (Desired Angles [rad], Max Velocity [rad/s], Acceleration/Deceleration [rad/s^2])
-        deltaKin.x = x
-        deltaKin.y = y
-        deltaKin.z = z
-        deltaKin.thts = thtDes
-    else:
-        print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
-
-
-def callback(data):
-
-    x = data.x
-    y = data.y
-    z = data.z
-    move(x, y, z)
-    # deltaKin.updatePlot((x, y, z))
-#    rospy.loginfo("x:%3.5f    y:%3.5f    z:%3.5f", %(x, y, z))
+# def callback(data, bot, deltaKin):
+#
+#     x = data.x
+#     y = data.y
+#     z = data.z
+#     endpos = (x, y, z)
+#     thtDes = deltaKin.IK((x, y, z))
+#
+#     assert (deltaKin.FK(thtDes) - endpos < .1).all()
+#     if all([deltaKin.check_constraints(i + 1, endpos, thtDes[i]) for i in range(3)]):
+#         print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
+#         print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (thtDes[0], thtDes[1], thtDes[2]))
+#         bot.trajMoveRad(thtDes, 2 * pi / 8,
+#                    2 * pi / 8)  # (Desired Angles [rad], Max Velocity [rad/s], Acceleration/Deceleration [rad/s^2])
+#     else:
+#         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
 
 def node():
+    bot = Bot()
+    bot.full_init()
+    for i in range(3):
+        bot.test_one(i, mytime=.1)
+    delta_kin = kin.deltaSolver(realBot=realBot)
+
+    def callback(data):
+
+        x = data.x
+        y = data.y
+        z = data.z
+        end_position = (x, y, z)
+        tht_des = delta_kin.IK((x, y, z))
+
+        assert (delta_kin.FK(tht_des) - end_position < .1).all()
+        if all([delta_kin.check_constraints(i + 1, end_position, tht_des[i]) for i in range(3)]):
+            print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
+            print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (tht_des[0], tht_des[1], tht_des[2]))
+            bot.trajMoveRad(tht_des, 2 * pi / 8, 2 * pi / 8)
+        else:
+            print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
+
     pub = rospy.Publisher('delta_position', Point, queue_size=10)
 
     rospy.init_node('inverse_kinematics', anonymous=False)
@@ -548,14 +549,9 @@ def node():
 
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
-        if not realBot:
-            pub.publish(Point(x=deltaKin.x, y=deltaKin.y, z=deltaKin.z))
-            virtual_thetas = [-1*deltaKin.thts[0], -1*deltaKin.thts[1], -1*deltaKin.thts[2]]
-            deltaKin.updatePlot(deltaKin.FK(virtual_thetas))
-        else:
-            thts = bot.get_rad_all()
-            pos = deltaKin.FK(thts)
-            pub.publish(Point(x=pos[0], y=pos[1], z=pos[2]))
+        thetas = bot.get_rad_all()
+        pos = delta_kin.FK(thetas)
+        pub.publish(Point(x=pos[0], y=pos[1], z=pos[2]))
         rate.sleep()
 
 
@@ -564,6 +560,7 @@ def main():
         node()
     except rospy.ROSInterruptException:
         pass
+
 
 if __name__ == '__main__':
     main()
