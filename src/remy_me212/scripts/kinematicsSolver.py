@@ -215,19 +215,19 @@ class deltaSolver(object):
 	def IK(self, endPos):
 		x, y, z = endPos
 		return (-self.solveTheta1(position(*endPos)), -self.solveTheta2(position(*endPos)), -self.solveTheta3(position(*endPos)))
-		def simulEqns(inp):
-			(th1, th2, th3) = inp
-			l = self.l
-			L = self.L
-			a = self.a
-			b = self.b
-			c = self.c
-			eq1 = 2*z*L*sin(th1) + x*x + y*y + z*z - l*l + L*L + a*a + 2*y*a + 2*L*(y+a)*cos(th1)
-			eq2 = 2*z*L*sin(th2) + x*x + y*y + z*z - l*l + L*L + b*b + c*c + 2*x*b + 2*y*c - L*(sqrt(3)*(x+b)+y+c)*cos(th2)
-			eq3 = 2*z*L*sin(th3) + x*x + y*y + z*z - l*l + L*L + b*b + c*c - 2*x*b + 2*y*c + L*(sqrt(3)*(x-b)-y-c)*cos(th3)
-			return (eq1, eq2, eq3)
-		tht1, tht2, tht3 = fsolve(simulEqns,(0,0,0))
-		return (-tht1, -tht2, -tht3)
+		# def simulEqns(inp):
+		# 	(th1, th2, th3) = inp
+		# 	l = self.l
+		# 	L = self.L
+		# 	a = self.a
+		# 	b = self.b
+		# 	c = self.c
+		# 	eq1 = 2*z*L*sin(th1) + x*x + y*y + z*z - l*l + L*L + a*a + 2*y*a + 2*L*(y+a)*cos(th1)
+		# 	eq2 = 2*z*L*sin(th2) + x*x + y*y + z*z - l*l + L*L + b*b + c*c + 2*x*b + 2*y*c - L*(sqrt(3)*(x+b)+y+c)*cos(th2)
+		# 	eq3 = 2*z*L*sin(th3) + x*x + y*y + z*z - l*l + L*L + b*b + c*c - 2*x*b + 2*y*c + L*(sqrt(3)*(x-b)-y-c)*cos(th3)
+		# 	return (eq1, eq2, eq3)
+		# tht1, tht2, tht3 = fsolve(simulEqns,(0,0,0))
+		# return (-tht1, -tht2, -tht3)
 	
 	def ik(self,endPos):
 		return self.IK(endPos)
@@ -242,7 +242,7 @@ class deltaSolver(object):
 		F1 = 2 * position.z * self.L
 		G1 = position.x ** 2 + position.y ** 2 + position.z ** 2 + self.a ** 2 + self.L ** 2 + 2 * position.y * self.a - self.l ** 2
 
-		return self.angleSolver(E1, F1, G1, 1)
+		return 0 if E1 == 0 and G1 == 0 else self.angleSolver(E1, F1, G1, 1)
 
 	def solveTheta2(self, position):
 		E2 = -self.L * (sqrt(3) * (position.x + self.b) + position.y + self.c)
