@@ -79,26 +79,27 @@ class Bot:
         self.axis0 = None
         self.axis1 = None
         self.axis2 = None
+        self.zero_encoder = 0
 
         self.connect_all()
         self.printPos()
 
 
 
-    def rad2Count(self, angle):
+    def rad2Count(self, angle): #TODO: Fix this to make the zero_encoder position different for each axis
         try:
-            return [0 - ang / self.CPR2RAD for ang in angle]
+            return [self.zero_encoder - ang / self.CPR2RAD for ang in angle]
         except TypeError:
-            return 0 - angle / self.CPR2RAD
+            return self.zero_encoder - angle / self.CPR2RAD
 
     def r2c(self, angle):
         return self.rad2Count(angle)
 
     def count2Rad(self, count):
         try:
-            return [(0 - cnt) * self.CPR2RAD for cnt in count]
+            return [(self.zero_encoder - cnt) * self.CPR2RAD for cnt in count]
         except TypeError:
-            return (0 - count) * self.CPR2RAD
+            return (self.zero_encoder - count) * self.CPR2RAD
 
     def c2r(self, count):
         return self.count2Rad(count)
@@ -166,7 +167,16 @@ class Bot:
         print("Done initializing! Reconnecting...")
         self.connect_all()
 
+    def stop_one(self, ii=0):
+        axis = self.axes[ii]
+        axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
 
+        axis.controller.vel_setpoint = 0
+
+    def stop_all(self):
+        for ii in range(len(self.axes)):
+            self.stop_one(ii)
 
     def vel_test_one(self, ii=0, amt=10000, mytime=2):
         axis = self.axes[ii]
@@ -300,8 +310,6 @@ class Bot:
             axis.trap_traj.config.decel_limit = abs(50000)
             axis.controller.move_to_pos(posDesired[ii])
             time.sleep(2)
-
-
 
     def trajMoveRad(self, posDesired=(0, 0, 0), velDesired= 1 * pi / 8, accDesired= 1 * pi / 8):
         self.trajMoveCnt(self.rad2Count(posDesired), self.rad2Count(velDesired), self.rad2Count(accDesired))
@@ -518,12 +526,19 @@ class Bot:
 #         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
 
+
 def node():
     bot = Bot()
-    bot.full_init()
-    for i in range(3):
-        bot.test_one(i, mytime=.1)
+    #bot.full_init()
+    #for i in range(3):
+    #    bot.test_one(i, mytime=.1)
     delta_kin = kin.deltaSolver(realBot=realBot)
+
+    def callback_lim1_init(data):
+        pushed = data.data
+        if pushed:
+            pass #TODO: Write callbacks for each limit switch, then set arms to move up until switch is depressed
+
 
     def callback(data):
 
