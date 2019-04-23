@@ -40,7 +40,7 @@ def rotx(theta):
 	return np.array([[1, 0, 0], [0, np.cos(theta), -np.sin(theta)], [0, np.sin(theta),  np.cos(theta)]])
 
 class deltaSolver(object):
-	def __init__(self, sb = 2*109.9852, sp = 109.9852, L = 304.8, l = 609.5144, h = 42.8475, tht0 = (0, 0, 0), swivel_limit = 50, realBot = False):
+	def __init__(self, sb = 2*109.9852, sp = 109.9852, L = 304.8, l = 609.5144, h = 42.8475, tht0 = (0, 0, 0), swivel_limit = 50, realBot = True):
 		# 109.9852mm is 2 * 2.5" * cos(30)
 
 		#swivel_limit is the physical constraint of the system's current design. 
