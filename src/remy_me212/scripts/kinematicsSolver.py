@@ -40,7 +40,7 @@ def rotx(theta):
 	return np.array([[1, 0, 0], [0, np.cos(theta), -np.sin(theta)], [0, np.sin(theta),  np.cos(theta)]])
 
 class deltaSolver(object):
-	def __init__(self, sb = 2*109.9852, sp = 109.9852, L = 304.8, l = 609.5144, h = 42.8475, tht0 = (0, 0, 0), swivel_limit = 50, realBot = True):
+	def __init__(self, sb = 220.33, sp = 109.47, L = 304.8, l = 609.6, h = 55.37, tht0 = (0, 0, 0), swivel_limit = 50, realBot = True):
 		# 109.9852mm is 2 * 2.5" * cos(30)
 
 		#swivel_limit is the physical constraint of the system's current design. 
@@ -198,8 +198,21 @@ class deltaSolver(object):
 		th1 = -th1
 		th2 = -th2
 		th3 = -th3
+		b_11 = lambda x, y, z: self.L*((y + self.a)*sin(th1)-z*cos(th1))
+		b_22 = lambda x, y, z: -self.L * ((np.sqrt(3)*(x+self.b)+y+self.c)*sin(th2+2*z*cos(th2)))
+		b_33 = lambda x, y, z: self.L * ((np.sqrt(3)*(x-self.b)-y-self.c)*sin(th3)-2*z*cos(th3))
+		A = lambda x, y, z: np.array(
+			[
+				[x, 									  y+self.a+self.L*cos(th1),     z + self.L*sin(th1)],
+				[2*(x+self.b)-np.sqrt(3)*self.L*cos(th2), 2*(y+self.c)-self.L*cos(th2), 2*(z+self.L*sin(th2))],
+				[2*(x-self.b)+np.sqrt(3)*self.L*cos(th3), 2*(y+self.c)-self.L*cos(th3), 2*(z+self.L*sin(th3))]
+			]
+		)
+		B = lambda x, y, z: np.diag((b_11(x, y, z), b_22(x, y, z), b_33(x, y, z)))
+		jac = lambda pos: np.dot(np.linalg.inv(A(*pos)), B(*pos))
+
 		def simulEqns(inp):
-			(x, y, z) = inp
+			x, y, z = inp
 			l = self.l
 			L = self.L
 			a = self.a
@@ -208,8 +221,10 @@ class deltaSolver(object):
 			eq1 = 2*z*L*sin(th1) + x*x + y*y + z*z - l*l + L*L + a*a + 2*y*a + 2*L*(y+a)*cos(th1)
 			eq2 = 2*z*L*sin(th2) + x*x + y*y + z*z - l*l + L*L + b*b + c*c + 2*x*b + 2*y*c - L*(sqrt(3)*(x+b)+y+c)*cos(th2)
 			eq3 = 2*z*L*sin(th3) + x*x + y*y + z*z - l*l + L*L + b*b + c*c - 2*x*b + 2*y*c + L*(sqrt(3)*(x-b)-y-c)*cos(th3)
-			return (eq1, eq2, eq3)
-		return fsolve(simulEqns, (0,0,-500))
+			return eq1, eq2, eq3
+		pos = fsolve(simulEqns, np.array([0,0,-600]))
+		xr, yr, zr = pos[:3]
+		return xr, yr, zr-(576-539.5)
 
 	
 	def IK(self, endPos):

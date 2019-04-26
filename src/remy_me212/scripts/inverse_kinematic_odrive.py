@@ -108,6 +108,24 @@ class Bot:
     def c2r(self, count, axis=None):
         return self.count2Rad(count, axis=axis)
 
+    def rad2Count_no_offset(self, angle):
+        try:
+            return [-ang / self.CPR2RAD for i, ang in enumerate(angle)]
+        except TypeError:
+            return -angle / self.CPR2RAD
+
+    def r2c_no(self, angle):
+        return self.rad2Count_no_offset(angle)
+
+    def count2Rad_no_offset(self, count):
+        try:
+            return [(-cnt) * self.CPR2RAD for i, cnt in enumerate(count)]
+        except TypeError:
+            return (-count) * self.CPR2RAD
+
+    def c2r_no(self, count):
+        return self.count2Rad_no_offset(count)
+
     def print_controllers(self):
         for axis in self.axes:
             print(axis.controller)
@@ -140,7 +158,7 @@ class Bot:
     def connect_all(self):
         for i in range(self.num_odrvs):
             self.odrvs[i] = API()
-            self.odrvs[i].connect(serial_number=self.usb_serials[i], timeout=30)
+            self.odrvs[i].connect(serial_number=self.usb_serials[i], timeout=15)
             self.odrvs[i] = self.odrvs[i].driver
         self.axes = [None, None, None]
 
@@ -317,8 +335,8 @@ class Bot:
 
     def trajMoveRad(self, posDesired=(0, 0, 0), velDesired= 1 * pi / 8, accDesired= 1 * pi / 8):
         self.trajMoveCnt(self.rad2Count(posDesired),
-                         self.rad2Count((velDesired, velDesired, velDesired)),
-                         self.rad2Count((accDesired, accDesired, accDesired)))
+                         self.r2c_no(velDesired),
+                         self.r2c_no(accDesired))
 
     def test_one(self, ii=0, amt=10000, mytime=.5):
         axis = self.axes[ii]
@@ -546,18 +564,25 @@ def callback(data):
         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
 
-def callback_lim_init(axis, data):
-    pushed = data.data
-    if pushed:
-        bot.stop_one(axis)
-        bot.zero_encoder[axis] = bot.get_cnt_one(axis)
-        lim_subs[axis].unregister()
-        bot.axes[axis].controller.config.control_mode = CTRL_MODE_POSITION_CONTROL
-        bot.axes[axis].requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
-        limit_flags[axis] = True
+def callback_lim_init(axis):
+    def ret(data):
+        pushed = data.data
+        if pushed:
+            bot.stop_one(axis)
+            bot.zero_encoder[axis] = bot.get_cnt_one(axis)
+            lim_subs[axis].unregister()
+            bot.axes[axis].controller.config.control_mode = CTRL_MODE_POSITION_CONTROL
+            bot.axes[axis].requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+            limit_flags[axis] = True
+            print("Limit switch %d pushed" % axis)
+            return
+    return ret
 
 
 def node():
+    LIMIT_SWITCH_INIT_VEL = -15000 # counts per second
+
+    print("Node starting...")
     global bot, delta_kin, lim_subs, limit_flags
     rospy.init_node('inverse_kinematics', anonymous=False)
 
@@ -570,14 +595,15 @@ def node():
 
     # Limit switch init begins here
     limit_flags = [False for _ in range(3)]
-    lim_subs = [rospy.Subscriber('lim%d' % i, Bool, lambda x: callback_lim_init(i, x)) for i in range(3)]
+    lim_subs = [rospy.Subscriber('lim%d' % i, Bool, callback_lim_init(i)) for i in range(3)]
+    print("Beginning limit switch initialization...")
     for axis in bot.axes:
         axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
         axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
-        axis.controller.vel_setpoint = 5000
+        axis.controller.vel_setpoint = LIMIT_SWITCH_INIT_VEL
     while not all(limit_flags):
         time.sleep(.001)
-
+    print("Limit switch initialization complete.")
     pub = rospy.Publisher('delta_position', Point, queue_size=10)
     rospy.Subscriber('desired_position', Point, callback)
 

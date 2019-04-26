@@ -8,9 +8,9 @@ bool pressLim[3] = {false, false, false};
 ros::NodeHandle nh;
 
 std_msgs::Bool rosmsg[3];
-ros::Publisher lim1("lim0", &rosmsg[0]);
-ros::Publisher lim2("lim1", &rosmsg[1]);
-ros::Publisher lim3("lim2", &rosmsg[2]);
+ros::Publisher lim0("lim0", &rosmsg[0]);
+ros::Publisher lim1("lim1", &rosmsg[1]);
+ros::Publisher lim2("lim2", &rosmsg[2]);
 
 void setup() {
   Serial.begin(9600);
@@ -19,9 +19,9 @@ void setup() {
     pinMode(limSwitch[i], INPUT);
   }
   nh.initNode();
+  nh.advertise(lim0);
   nh.advertise(lim1);
   nh.advertise(lim2);
-  nh.advertise(lim3);
 }
 
 void loop() {
@@ -30,9 +30,9 @@ void loop() {
     pressLim[i] = !digitalRead(limSwitch[i]);
     rosmsg[i].data = pressLim[i];
   }
-  lim1.publish( &rosmsg[0]);
-  lim2.publish( &rosmsg[1]);
-  lim3.publish( &rosmsg[2]);
+  lim0.publish( &rosmsg[0]);
+  lim1.publish( &rosmsg[1]);
+  lim2.publish( &rosmsg[2]);
   nh.spinOnce();
 
   Serial.print("Switch_1=");

@@ -1,4 +1,7 @@
 <launch>
   <node name="odrive" pkg="remy_me212" type="inverse_kinematic_odrive.py" output="screen"/>
   <node name="limit_switches" pkg="rosserial_python" type="serial_node.py" args="_port:=/dev/ttyACM0 _baud:=9600" />
+
+<machine name="mobile" address="192.168.0.106" env-loader="/home/robot/me212lab3solutions/catkin_ws/devel/env.sh" />
+<node machine="mobile" name="mobile" pkg="me212bot" type="me212bot_node.py" />
 </launch> 
