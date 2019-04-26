@@ -2,11 +2,14 @@
 
 import rospy
 from geometry_msgs.msg import Point
+from std_msgs.msg import Bool
 from odrive_ros.odrive_interface import ODriveInterfaceAPI as API
 import odrive
 from fibre.utils import Logger
 import logging
 from odrive.enums import *
+import kinematicsSolver as kin
+import time
 
 import time
 import math
@@ -17,10 +20,15 @@ import signal
 import sys
 import numpy as np
 
-pi = np.pi #3.1415927
+
 #####################################
 realBot = True
 #####################################
+
+# if not realBot:
+#    import robot212_virtual as bot
+
+pi = np.pi  # 3.1415927
 
 
 class Bot:
@@ -31,6 +39,7 @@ class Bot:
         Interface from Python to ODrive
 
         Daniel J. Gonzalez - dgonz@mit.edu
+        Edited by R.E.M.Y.
         2.12 Intro to Robotics Spring 2019
         """
 
@@ -67,33 +76,55 @@ class Bot:
         # axis2 = None
         self.odrvs = [None, None]
         # self.usb_serials = ['2087378B3548']
+
+        self.num_odrvs = len(self.odrvs)
         self.axes = [None, None, None]
         self.axis0 = None
         self.axis1 = None
         self.axis2 = None
 
+        self.num_axes = len(self.axes)
+        self.zero_encoder = [0 for _ in self.axes]
         self.connect_all()
         self.printPos()
 
 
 
-    def rad2Count(self, angle):
+    def rad2Count(self, angle, axis=None):
         try:
-            return [0 - ang / self.CPR2RAD for ang in angle]
+            return [self.zero_encoder[i] - ang / self.CPR2RAD for i, ang in enumerate(angle)]
         except TypeError:
-            return 0 - angle / self.CPR2RAD
+            return self.zero_encoder[axis] - angle / self.CPR2RAD
 
-    def r2c(self, angle):
-        return self.rad2Count(angle)
+    def r2c(self, angle, axis=None):
+        return self.rad2Count(angle, axis=axis)
 
-    def count2Rad(self, count):
+    def count2Rad(self, count, axis=None):
         try:
-            return [(0 - cnt) * self.CPR2RAD for cnt in count]
+            return [(self.zero_encoder[i] - cnt) * self.CPR2RAD for i, cnt in enumerate(count)]
         except TypeError:
-            return (0 - count) * self.CPR2RAD
+            return (self.zero_encoder[axis] - count) * self.CPR2RAD
 
-    def c2r(self, count):
-        return self.count2Rad(count)
+    def c2r(self, count, axis=None):
+        return self.count2Rad(count, axis=axis)
+
+    def rad2Count_no_offset(self, angle):
+        try:
+            return [-ang / self.CPR2RAD for i, ang in enumerate(angle)]
+        except TypeError:
+            return -angle / self.CPR2RAD
+
+    def r2c_no(self, angle):
+        return self.rad2Count_no_offset(angle)
+
+    def count2Rad_no_offset(self, count):
+        try:
+            return [(-cnt) * self.CPR2RAD for i, cnt in enumerate(count)]
+        except TypeError:
+            return (-count) * self.CPR2RAD
+
+    def c2r_no(self, count):
+        return self.count2Rad_no_offset(count)
 
     def print_controllers(self):
         for axis in self.axes:
@@ -125,9 +156,9 @@ class Bot:
         self.print_controllers()
 
     def connect_all(self):
-        for i in range(len(self.usb_serials)):
+        for i in range(self.num_odrvs):
             self.odrvs[i] = API()
-            self.odrvs[i].connect(serial_number=self.usb_serials[i], timeout=30)
+            self.odrvs[i].connect(serial_number=self.usb_serials[i], timeout=15)
             self.odrvs[i] = self.odrvs[i].driver
         self.axes = [None, None, None]
 
@@ -158,7 +189,16 @@ class Bot:
         print("Done initializing! Reconnecting...")
         self.connect_all()
 
+    def stop_one(self, ii=0):
+        axis = self.axes[ii]
+        axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
 
+        axis.controller.vel_setpoint = 0
+
+    def stop_all(self):
+        for ii in range(self.num_axes):
+            self.stop_one(ii)
 
     def vel_test_one(self, ii=0, amt=10000, mytime=2):
         axis = self.axes[ii]
@@ -260,7 +300,7 @@ class Bot:
         # print_all()
 
     def trajMoveCnt(self, posDesired=(0, 0, 0), velDesired=50000, accDesired=50000):
-        for ii in range(len(self.axes)):
+        for ii in range(self.num_axes):
             axis = self.axes[ii]
             axis.trap_traj.config.vel_limit = abs(velDesired)  # 600000 max, 50000 is 1/8 rev per second
             axis.trap_traj.config.accel_limit = abs(accDesired)  # 50000 is 1/8 rev per second per second
@@ -269,14 +309,14 @@ class Bot:
 
     def spider(self):
         posDesired = self.rad2Count((0, 0, 0))
-        for ii in range(len(self.axes)):
+        for ii in range(self.num_axes):
             axis = self.axes[ii]
             axis.trap_traj.config.vel_limit = abs(12500)  # 600000 max, 50000 is 1/8 rev per second
             axis.trap_traj.config.accel_limit = abs(50000)  # 50000 is 1/8 rev per second per second
             axis.trap_traj.config.decel_limit = abs(50000)
             axis.controller.move_to_pos(posDesired[ii])
         posDesired = self.rad2Count((-pi/2, -pi/2, -pi/2))
-        for ii in range(len(self.axes)):
+        for ii in range(self.num_axes):
             axis = self.axes[ii]
             axis.trap_traj.config.vel_limit = abs(12500)  # 600000 max, 50000 is 1/8 rev per second
             axis.trap_traj.config.accel_limit = abs(50000)  # 50000 is 1/8 rev per second per second
@@ -285,7 +325,7 @@ class Bot:
             time.sleep(2)
         time.sleep(2)
         posDesired = self.rad2Count((0, 0, 0))
-        for ii in range(len(self.axes)):
+        for ii in range(self.num_axes):
             axis = self.axes[ii]
             axis.trap_traj.config.vel_limit = abs(12500)  # 600000 max, 50000 is 1/8 rev per second
             axis.trap_traj.config.accel_limit = abs(50000)  # 50000 is 1/8 rev per second per second
@@ -293,10 +333,10 @@ class Bot:
             axis.controller.move_to_pos(posDesired[ii])
             time.sleep(2)
 
-
-
     def trajMoveRad(self, posDesired=(0, 0, 0), velDesired= 1 * pi / 8, accDesired= 1 * pi / 8):
-        self.trajMoveCnt(self.rad2Count(posDesired), self.rad2Count(velDesired), self.rad2Count(accDesired))
+        self.trajMoveCnt(self.rad2Count(posDesired),
+                         self.r2c_no(velDesired),
+                         self.r2c_no(accDesired))
 
     def test_one(self, ii=0, amt=10000, mytime=.5):
         axis = self.axes[ii]
@@ -472,7 +512,7 @@ class Bot:
         self.odrvs[ii].save_configuration()
 
     def make_perm_all(self):
-        for ii in range(len(self.odrvs)):
+        for ii in range(self.num_odrvs):
             if self.odrvs[ii] == None:
                 continue
             self.odrvs[ii].save_configuration()
@@ -481,80 +521,97 @@ class Bot:
         for axis in self.axes:
             axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
 
+    def get_cnt_one(self, axis):
+        return self.axes[axis].encoder.pos_estimate
+
     def get_cnt_all(self):
-        positions = [None, None, None]
-        ii = 0
-        for axis in self.axes:
-            positions[ii] = axis.encoder.pos_estimate
-            ii += 1
-        return positions
+        return [self.get_cnt_one(i) for i in range(self.num_axes)]
 
     def get_rad_all(self):
         return self.count2Rad(self.get_cnt_all())
 
-if realBot:
-    bot = Bot()
+# def callback(data, bot, deltaKin):
+#
+#     x = data.x
+#     y = data.y
+#     z = data.z
+#     endpos = (x, y, z)
+#     thtDes = deltaKin.IK((x, y, z))
+#
+#     assert (deltaKin.FK(thtDes) - endpos < .1).all()
+#     if all([deltaKin.check_constraints(i + 1, endpos, thtDes[i]) for i in range(3)]):
+#         print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
+#         print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (thtDes[0], thtDes[1], thtDes[2]))
+#         bot.trajMoveRad(thtDes, 2 * pi / 8,
+#                    2 * pi / 8)  # (Desired Angles [rad], Max Velocity [rad/s], Acceleration/Deceleration [rad/s^2])
+#     else:
+#         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
-else:
-    import robot212_virtual as bot
 
-import kinematicsSolver as kin
-import time
+def callback(data):
+    x = data.x
+    y = data.y
+    z = data.z
+    end_position = (x, y, z)
+    tht_des = delta_kin.IK((x, y, z))
 
-#bot.trajMoveRad((0,0,0))
-deltaKin = kin.deltaSolver(realBot=realBot)
-if realBot:
-    bot.full_init()
-    for i in range(3):
-        bot.test_one(i, mytime=.1)
-#    bot.spider()
-
-
-def move(x, y, z):
-    endpos = (x, y, z)
-    thtDes = deltaKin.IK((x, y, z))
-
-    assert (deltaKin.FK(thtDes) - endpos < .1).all()
-    if all([deltaKin.check_constraints(i + 1, endpos, thtDes[i]) for i in range(3)]):
+    assert (delta_kin.FK(tht_des) - end_position < .1).all()
+    if all([delta_kin.check_constraints(i + 1, end_position, tht_des[i]) for i in range(3)]):
         print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
-        print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (thtDes[0], thtDes[1], thtDes[2]))
-        bot.trajMoveRad(thtDes, 2 * pi / 8,
-                        2 * pi / 8)  # (Desired Angles [rad], Max Velocity [rad/s], Acceleration/Deceleration [rad/s^2])
-        deltaKin.x = x
-        deltaKin.y = y
-        deltaKin.z = z
-        deltaKin.thts = thtDes
+        print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (tht_des[0], tht_des[1], tht_des[2]))
+        bot.trajMoveRad(tht_des, 2 * pi / 8, 2 * pi / 8)
     else:
         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
 
-def callback(data):
-
-    x = data.x
-    y = data.y
-    z = data.z
-    move(x, y, z)
-    # deltaKin.updatePlot((x, y, z))
-#    rospy.loginfo("x:%3.5f    y:%3.5f    z:%3.5f", %(x, y, z))
+def callback_lim_init(axis):
+    def ret(data):
+        pushed = data.data
+        if pushed:
+            bot.stop_one(axis)
+            bot.zero_encoder[axis] = bot.get_cnt_one(axis)
+            lim_subs[axis].unregister()
+            bot.axes[axis].controller.config.control_mode = CTRL_MODE_POSITION_CONTROL
+            bot.axes[axis].requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+            limit_flags[axis] = True
+            print("Limit switch %d pushed" % axis)
+            return
+    return ret
 
 
 def node():
-    pub = rospy.Publisher('delta_position', Point, queue_size=10)
+    LIMIT_SWITCH_INIT_VEL = -15000 # counts per second
 
+    print("Node starting...")
+    global bot, delta_kin, lim_subs, limit_flags
     rospy.init_node('inverse_kinematics', anonymous=False)
 
+    bot = Bot()
+    # bot.full_init()
+    # for i in range(3):
+    #    bot.test_one(i, mytime=.1)
+
+    delta_kin = kin.deltaSolver(realBot=realBot)
+
+    # Limit switch init begins here
+    limit_flags = [False for _ in range(3)]
+    lim_subs = [rospy.Subscriber('lim%d' % i, Bool, callback_lim_init(i)) for i in range(3)]
+    print("Beginning limit switch initialization...")
+    for axis in bot.axes:
+        axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+        axis.controller.vel_setpoint = LIMIT_SWITCH_INIT_VEL
+    while not all(limit_flags):
+        time.sleep(.001)
+    print("Limit switch initialization complete.")
+    pub = rospy.Publisher('delta_position', Point, queue_size=10)
     rospy.Subscriber('desired_position', Point, callback)
 
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
-        if not realBot:
-            pub.publish(Point(x=deltaKin.x, y=deltaKin.y, z=deltaKin.z))
-            virtual_thetas = [-1*deltaKin.thts[0], -1*deltaKin.thts[1], -1*deltaKin.thts[2]]
-            deltaKin.updatePlot(deltaKin.FK(virtual_thetas))
-        else:
-            thts = bot.get_rad_all()
-            pos = deltaKin.FK(thts)
-            pub.publish(Point(x=pos[0], y=pos[1], z=pos[2]))
+        thetas = bot.get_rad_all()
+        pos = delta_kin.FK(thetas)
+        pub.publish(Point(x=pos[0], y=pos[1], z=pos[2]))
         rate.sleep()
 
 
@@ -563,6 +620,7 @@ def main():
         node()
     except rospy.ROSInterruptException:
         pass
+
 
 if __name__ == '__main__':
     main()

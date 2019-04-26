@@ -3,6 +3,6 @@ prefix=/home/robot/catkin_ws/devel
 Name: remy_me212
 Description: Description of remy_me212
 Version: 0.0.0
-Cflags: 
+Cflags: -I/home/robot/catkin_ws/devel/include
 Libs: -L/home/robot/catkin_ws/devel/lib 
-Requires: 
+Requires: geometry_msgs math numpy odrive odrive_ros rospy message_runtime

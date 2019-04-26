@@ -7,4 +7,6 @@
 # new environment variables
 
 # modified environment variables
+export PATH="/opt/ros/kinetic/bin:/home/robot/bin:/home/robot/.local/bin:/home/robot/bin:/home/robot/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
 export PWD="/home/robot/catkin_ws/build"
+export PYTHONPATH="/home/robot/catkin_ws/devel/lib/python2.7/dist-packages:$PYTHONPATH"

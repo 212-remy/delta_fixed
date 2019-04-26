@@ -2,6 +2,7 @@
 #include <std_msgs/Bool.h>
 
 int limSwitch[3] = {16, 15, 14};
+int actuatorPin = 23;
 int VinPin = 6;
 bool pressLim[3] = {false, false, false};
 
@@ -12,16 +13,27 @@ ros::Publisher lim0("lim0", &rosmsg[0]);
 ros::Publisher lim1("lim1", &rosmsg[1]);
 ros::Publisher lim2("lim2", &rosmsg[2]);
 
+void messageCb(const std_msgs::Bool& x) {
+  digitalWrite(actuatorPin, x.data ? HIGH : LOW);
+}
+
+ros::Subscriber<std_msgs::Bool> actuator("actuator", &messageCb );
+
 void setup() {
   Serial.begin(9600);
   pinMode(VinPin, OUTPUT);
   for (int i=0; i<3; i++) {
     pinMode(limSwitch[i], INPUT);
   }
+  pinMode(actuatorPin, OUTPUT);
+  digitalWrite(actuatorPin, HIGH);
+  delay(2000);
+  digitalWrite(actuatorPin, LOW);
   nh.initNode();
   nh.advertise(lim0);
   nh.advertise(lim1);
   nh.advertise(lim2);
+  nh.subscribe(actuator);
 }
 
 void loop() {
