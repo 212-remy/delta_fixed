@@ -1,7 +1,11 @@
+#!/usr/bin/env python
+
 import rospy
 from remy_me212.msg import DeltaState, DeltaStateArray
 from geometry_msgs.msg import Point
 from std_msgs.msg import Bool
+import numpy as np
+from Queue import Queue
 
 # We want to define a state message, which contains a point (the location of the end effector) and a boolean to
 # describe the state of the end effector. The input to this trajectory node will then be an array of states. To
@@ -10,28 +14,56 @@ from std_msgs.msg import Bool
 # this node will tell the gripper to change state (if applicable). So the delta robot will move, then grip, then move,
 # then drop, then move, etc.
 
-def plan_trajectory(data):
-    global delta_position_pub, actuator_pub, current_actuator_state, current_position
-    states = list(data.data)
-    #TODO finish this
+global delta_position_pub, actuator_pub, current_actuator_state, current_position, queue
+neutral = Point(x=0, y=0, z=-700)
 
-def update_current_position(data)
+
+def trajectory(data):
+    global queue
+    for state in data.states:
+        queue.put(state)
+
+
+def queue_handle():
+    global queue, delta_position_pub, actuator_pub, current_actuator_state, current_position
+    if not queue.empty():
+        state = queue.get()
+        delta_position_pub.publish(neutral)
+        delta_position_pub.publish(state.position)
+        state_position = (state.position.x, state.position.y, state.position.z)
+        while l2_distance(current_position, state_position) > 10:
+            rospy.sleep(.1)
+        actuator_pub.publish(state.actuator)
+        current_actuator_state = state.actuator.data
+
+
+def update_current_position(data):
+    global current_position
     current_position = (data.x, data.y, data.z)
 
 
+def l2_distance(p1, p2):
+    return np.sqrt(sum((b-a)**2 for a, b in zip(p1, p2)))
+
+
 def node():
-    global delta_position_pub, actuator_pub, current_actuator_state, current_position
+    global delta_position_pub, actuator_pub, current_actuator_state, current_position, queue
+    rospy.init_node('trajectory')
+    queue = Queue()
+
     current_actuator_state = False
-    delta_position_pub = rospy.publisher('desired_position', Point)
-    actuator_pub = rospy.publisher('actuator', Point)
-    sub = rospy.subscriber('state_arrays', DeltaStateArray, plan_trajectory)
-    delta_position_subscriber = rospy.subscriber("delta_position", Point, update_current_position)
-    rospy.init_node()
-    rospy,spin()
+    delta_position_pub = rospy.Publisher('desired_position', Point, queue_size=10)
+    actuator_pub = rospy.Publisher('actuator', Bool, queue_size=10)
+    sub = rospy.Subscriber('state_arrays', DeltaStateArray, trajectory)
+    delta_position_subscriber = rospy.Subscriber("delta_position", Point, update_current_position)
+
+    while not rospy.is_shutdown():
+        queue_handle()
+        rospy.sleep(.1)
 
 
 def main():
-    pass
+    node()
 
 
 if __name__ == "__main__":

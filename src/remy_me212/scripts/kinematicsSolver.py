@@ -21,8 +21,11 @@ cos = np.cos
 
 RAD2DEG = 180.0/pi
 DEG2RAD = pi/180.0
+END_EFFECTOR_LENGTH = 118 # mm
+BOTTOM_OF_TOP_PLATE_TO_TABLE = 1010 # mm
 
 # POSITIVE MOTION OF THETA MOVES ARM DOWN! This is opposite the ODrive convention!
+
 
 class position(object):
 	def __init__(self, x, y, z):
@@ -69,7 +72,7 @@ class deltaSolver(object):
 		self.ub = (sqrt(3)/3) * self.sb
 		self.wp = (sqrt(3)/6) * self.sp
 		self.up = (sqrt(3)/3) * self.sp
-		
+
 		self.a = self.wb - self.up
 		self.b = self.sp/2 - (sqrt(3)/2) * self.wb
 		self.c = self.wp - self.wb/2
@@ -81,11 +84,12 @@ class deltaSolver(object):
 		self.endpt = (self.x, self.y, self.z)
 		(th1, th2, th3) = self.IK((self.x, self.y, self.z))
 		self.thts = (th1, th2, th3)
+		self.theta_min = None
 		if not realBot:
 			self.fig = plt.figure()
 
 			self.plot((xx,yy,zz))
-	
+
 	def plot(self, pos = (0, 0, -500)):
 		(x, y, z) = pos
 		thts = self.ik(pos)
@@ -111,7 +115,7 @@ class deltaSolver(object):
 		basePts = np.hstack((base1, base2, base3, base1))
 		basePts = np.array(basePts)
 		ax.plot(basePts[0,:] ,basePts[1,:], basePts[2,:],c='k')
-		
+
 		#Plot Origin Axes
 		p = np.array([0, 0, 0])
 		a1 = p+np.array([100,0,0])
@@ -180,7 +184,7 @@ class deltaSolver(object):
 			plt.pause(0.1)
 		else:
 			self.ax.scatter(xs = pos[0], ys = pos[1],zs = pos[2], c = color)
-	
+
 	def update_lines(self, num, dataLines, lines) :
 		for line, data in zip(lines, dataLines) :
 			# note: there is no .set_data() for 3 dim data...
@@ -191,7 +195,7 @@ class deltaSolver(object):
 	def updateThings(self, linesObj, xPts, yPts, zPts):
 		linesObj[0].set_data(xPts, yPts)
 		linesObj[0].set_3d_properties(zPts)
-	
+
 	def FK(self,thts):
 		#	Works regardless of length unit. Angle units are in radians. 
 		th1, th2, th3 = thts
@@ -224,26 +228,28 @@ class deltaSolver(object):
 			return eq1, eq2, eq3
 		pos = fsolve(simulEqns, np.array([0,0,-600]))
 		xr, yr, zr = pos[:3]
-		return xr, yr, zr-(576-539.5)
+		return xr, yr, zr-(576-539.5) - END_EFFECTOR_LENGTH
 
-	
+
 	def IK(self, endPos):
 		x, y, z = endPos
+		z += (576-539.5) + END_EFFECTOR_LENGTH
+		endPos = (x, y, z)
 		return (-self.solveTheta1(position(*endPos)), -self.solveTheta2(position(*endPos)), -self.solveTheta3(position(*endPos)))
-		# def simulEqns(inp):
-		# 	(th1, th2, th3) = inp
-		# 	l = self.l
-		# 	L = self.L
-		# 	a = self.a
-		# 	b = self.b
-		# 	c = self.c
-		# 	eq1 = 2*z*L*sin(th1) + x*x + y*y + z*z - l*l + L*L + a*a + 2*y*a + 2*L*(y+a)*cos(th1)
-		# 	eq2 = 2*z*L*sin(th2) + x*x + y*y + z*z - l*l + L*L + b*b + c*c + 2*x*b + 2*y*c - L*(sqrt(3)*(x+b)+y+c)*cos(th2)
-		# 	eq3 = 2*z*L*sin(th3) + x*x + y*y + z*z - l*l + L*L + b*b + c*c - 2*x*b + 2*y*c + L*(sqrt(3)*(x-b)-y-c)*cos(th3)
-		# 	return (eq1, eq2, eq3)
-		# tht1, tht2, tht3 = fsolve(simulEqns,(0,0,0))
-		# return (-tht1, -tht2, -tht3)
-	
+	# def simulEqns(inp):
+	# 	(th1, th2, th3) = inp
+	# 	l = self.l
+	# 	L = self.L
+	# 	a = self.a
+	# 	b = self.b
+	# 	c = self.c
+	# 	eq1 = 2*z*L*sin(th1) + x*x + y*y + z*z - l*l + L*L + a*a + 2*y*a + 2*L*(y+a)*cos(th1)
+	# 	eq2 = 2*z*L*sin(th2) + x*x + y*y + z*z - l*l + L*L + b*b + c*c + 2*x*b + 2*y*c - L*(sqrt(3)*(x+b)+y+c)*cos(th2)
+	# 	eq3 = 2*z*L*sin(th3) + x*x + y*y + z*z - l*l + L*L + b*b + c*c - 2*x*b + 2*y*c + L*(sqrt(3)*(x-b)-y-c)*cos(th3)
+	# 	return (eq1, eq2, eq3)
+	# tht1, tht2, tht3 = fsolve(simulEqns,(0,0,0))
+	# return (-tht1, -tht2, -tht3)
+
 	def ik(self,endPos):
 		return self.IK(endPos)
 
@@ -328,10 +334,12 @@ class deltaSolver(object):
 		AB = np.matmul(A, B)
 		thetadot = np.matmul(AB, inputVec)
 
-	# return a vector of the angle velocities. [omega1, omega2, omega3]
+		# return a vector of the angle velocities. [omega1, omega2, omega3]
 		return thetadot
 
 	def check_constraints(self, motorID, endpos, theta1):
+		if not self.theta_min:
+			self.theta_min, _, _ = self.IK((0, 0, -BOTTOM_OF_TOP_PLATE_TO_TABLE))
 		# # endpos is a tuple
 		#
 		# # assign lengths
@@ -369,12 +377,7 @@ class deltaSolver(object):
 		# 	return False
 		# if any(np.isnan(x) for x in  [theta1, theta2, theta3]):
 		# 	return False
-		if (theta1 >= 0):
-			return False
-		if (theta1 <= -pi/2):
-			return False
-
-		return True
+		return self.theta_min <= theta1 <= 0
 
 
 

@@ -1,4 +1,5 @@
 <launch>
   <node name="odrive" pkg="remy_me212" type="inverse_kinematic_odrive.py" output="screen"/>
   <node name="limit_switches" pkg="rosserial_python" type="serial_node.py" args="_port:=/dev/ttyACM0 _baud:=9600" />
+  <node name="trajectory" pkg="remy_me212" type="trajectory.py" output="screen"/>
 </launch> 

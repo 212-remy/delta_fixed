@@ -2,7 +2,8 @@
 #include <std_msgs/Bool.h>
 
 int limSwitch[3] = {16, 15, 14};
-int actuatorPin = 23;
+int actuatorPinHighOn = 23;
+int actuatorPinHighOff = 22;
 int VinPin = 6;
 bool pressLim[3] = {false, false, false};
 
@@ -14,21 +15,34 @@ ros::Publisher lim1("lim1", &rosmsg[1]);
 ros::Publisher lim2("lim2", &rosmsg[2]);
 
 void messageCb(const std_msgs::Bool& x) {
-  digitalWrite(actuatorPin, x.data ? HIGH : LOW);
+  if (x.data) {
+    actuatorOn();
+  } else {
+    actuatorOff();
+  }
 }
 
 ros::Subscriber<std_msgs::Bool> actuator("actuator", &messageCb );
 
+void actuatorOn() {
+    digitalWrite(actuatorPinHighOn, HIGH);
+    digitalWrite(actuatorPinHighOff, LOW);
+}
+
+void actuatorOff() {
+    digitalWrite(actuatorPinHighOn, LOW);
+    digitalWrite(actuatorPinHighOff, HIGH);
+}
+
 void setup() {
   Serial.begin(9600);
   pinMode(VinPin, OUTPUT);
-  for (int i=0; i<3; i++) {
+  for (int i = 0; i < 3; i++) {
     pinMode(limSwitch[i], INPUT);
   }
-  pinMode(actuatorPin, OUTPUT);
-  digitalWrite(actuatorPin, HIGH);
-  delay(2000);
-  digitalWrite(actuatorPin, LOW);
+  pinMode(actuatorPinHighOn, OUTPUT);
+  pinMode(actuatorPinHighOff, OUTPUT);
+  actuatorOff();
   nh.initNode();
   nh.advertise(lim0);
   nh.advertise(lim1);
@@ -38,7 +52,7 @@ void setup() {
 
 void loop() {
   digitalWrite(VinPin, HIGH);
-  for (int i=0; i<3; i++) {
+  for (int i = 0; i < 3; i++) {
     pressLim[i] = !digitalRead(limSwitch[i]);
     rosmsg[i].data = pressLim[i];
   }
