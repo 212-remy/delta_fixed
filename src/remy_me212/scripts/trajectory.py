@@ -15,7 +15,7 @@ from Queue import Queue
 # then drop, then move, etc.
 
 global delta_position_pub, actuator_pub, current_actuator_state, current_position, queue
-neutral = Point(x=0, y=0, z=-700)
+neutral = Point(x=0, y=0, z=-750)
 
 
 def trajectory(data):
@@ -28,7 +28,10 @@ def queue_handle():
     global queue, delta_position_pub, actuator_pub, current_actuator_state, current_position
     if not queue.empty():
         state = queue.get()
+        rospy.sleep(.1)
         delta_position_pub.publish(neutral)
+        while l2_distance(current_position,  (neutral.x, neutral.y, neutral.z)) > 10:
+            rospy.sleep(.1)
         delta_position_pub.publish(state.position)
         state_position = (state.position.x, state.position.y, state.position.z)
         while l2_distance(current_position, state_position) > 10:
@@ -63,7 +66,10 @@ def node():
 
 
 def main():
-    node()
+    try:
+        node()
+    except rospy.ROSInterruptException:
+        pass
 
 
 if __name__ == "__main__":

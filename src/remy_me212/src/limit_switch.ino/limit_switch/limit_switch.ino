@@ -26,11 +26,13 @@ ros::Subscriber<std_msgs::Bool> actuator("actuator", &messageCb );
 
 void actuatorOn() {
     digitalWrite(actuatorPinHighOn, HIGH);
+    //delay(50);
     digitalWrite(actuatorPinHighOff, LOW);
 }
 
 void actuatorOff() {
     digitalWrite(actuatorPinHighOn, LOW);
+    //delay(50);
     digitalWrite(actuatorPinHighOff, HIGH);
 }
 

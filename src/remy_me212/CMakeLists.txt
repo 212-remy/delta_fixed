@@ -9,6 +9,8 @@ add_message_files(
   FILES
   DeltaState.msg
   DeltaStateArray.msg
+  Topping.msg
+  ToppingArray.msg
 )
 generate_messages(
   DEPENDENCIES
@@ -30,6 +32,8 @@ include_directories(
 catkin_install_python(PROGRAMS 
   scripts/inverse_kinematic_odrive.py
   scripts/trajectory.py
+  scripts/color_thresh.py
+  scripts/planner.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 install(DIRECTORY launch/

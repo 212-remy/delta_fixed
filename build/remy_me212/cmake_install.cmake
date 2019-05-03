@@ -36,6 +36,8 @@ if(NOT CMAKE_INSTALL_COMPONENT OR "${CMAKE_INSTALL_COMPONENT}" STREQUAL "Unspeci
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/share/remy_me212/msg" TYPE FILE FILES
     "/home/robot/catkin_ws/src/remy_me212/msg/DeltaState.msg"
     "/home/robot/catkin_ws/src/remy_me212/msg/DeltaStateArray.msg"
+    "/home/robot/catkin_ws/src/remy_me212/msg/Topping.msg"
+    "/home/robot/catkin_ws/src/remy_me212/msg/ToppingArray.msg"
     )
 endif()
 
@@ -92,6 +94,14 @@ endif()
 
 if(NOT CMAKE_INSTALL_COMPONENT OR "${CMAKE_INSTALL_COMPONENT}" STREQUAL "Unspecified")
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/remy_me212" TYPE PROGRAM FILES "/home/robot/catkin_ws/build/remy_me212/catkin_generated/installspace/trajectory.py")
+endif()
+
+if(NOT CMAKE_INSTALL_COMPONENT OR "${CMAKE_INSTALL_COMPONENT}" STREQUAL "Unspecified")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/remy_me212" TYPE PROGRAM FILES "/home/robot/catkin_ws/build/remy_me212/catkin_generated/installspace/color_thresh.py")
+endif()
+
+if(NOT CMAKE_INSTALL_COMPONENT OR "${CMAKE_INSTALL_COMPONENT}" STREQUAL "Unspecified")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/remy_me212" TYPE PROGRAM FILES "/home/robot/catkin_ws/build/remy_me212/catkin_generated/installspace/planner.py")
 endif()
 
 if(NOT CMAKE_INSTALL_COMPONENT OR "${CMAKE_INSTALL_COMPONENT}" STREQUAL "Unspecified")

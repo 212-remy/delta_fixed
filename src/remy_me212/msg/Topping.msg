@@ -4,4 +4,7 @@ uint8 OLIVE=1
 uint8 HAM=2
 uint8 PEPPERONI=3
 uint8 PINEAPPLE=4
-unit8 type
+uint8 TOPPING_HOLE=5
+uint8 SALT_SHAKER=6
+uint8 PIZZA=7
+uint8 type

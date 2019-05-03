@@ -2,7 +2,7 @@
 
 import rospy
 from geometry_msgs.msg import Point
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64
 from odrive_ros.odrive_interface import ODriveInterfaceAPI as API
 import odrive
 from fibre.utils import Logger
@@ -19,6 +19,7 @@ import struct
 import signal
 import sys
 import numpy as np
+from Queue import Queue
 
 
 #####################################
@@ -69,7 +70,7 @@ class Bot:
 
         # odrvs = [None, None]
         # '''[[ODrive 0, ODrive 1]]'''
-        self.usb_serials = ['2085377D3548', '2087378B3548']#, '208637853548']
+        self.usb_serials = ['2085377D3548', '205337853548']#, '208637853548']
         # axes = [None, None, None]
         # axis0 = None
         # axis1 = None
@@ -87,6 +88,7 @@ class Bot:
         self.zero_encoder = [0 for _ in self.axes]
         self.connect_all()
         self.printPos()
+        self.queue = Queue()
 
 
 
@@ -108,6 +110,7 @@ class Bot:
     def c2r(self, count, axis=None):
         return self.count2Rad(count, axis=axis)
 
+    # No offset for velocity/acceleration
     def rad2Count_no_offset(self, angle):
         try:
             return [-ang / self.CPR2RAD for i, ang in enumerate(angle)]
@@ -299,41 +302,27 @@ class Bot:
         print(4)
         # print_all()
 
-    def trajMoveCnt(self, posDesired=(0, 0, 0), velDesired=50000, accDesired=50000):
-        for ii in range(self.num_axes):
-            axis = self.axes[ii]
-            axis.trap_traj.config.vel_limit = abs(velDesired)  # 600000 max, 50000 is 1/8 rev per second
-            axis.trap_traj.config.accel_limit = abs(accDesired)  # 50000 is 1/8 rev per second per second
-            axis.trap_traj.config.decel_limit = abs(accDesired)
-            axis.controller.move_to_pos(posDesired[ii])
+    def queueHandle(self):
+        if not (self.queue.empty() or self.moving()):
+            #print("Queue length: %d" % self.queue.qsize())
+            args = self.queue.get()
+            #print("Going to encoder counts %s" % str(args.__dict__['posDesired']))
+            for ii in range(self.num_axes):
+                axis = self.axes[ii]
+                axis.trap_traj.config.vel_limit = abs(args.velDesired)  # 600000 max, 50000 is 1/8 rev per second
+                axis.trap_traj.config.accel_limit = abs(args.accDesired)  # 50000 is 1/8 rev per second per second
+                axis.trap_traj.config.decel_limit = abs(args.accDesired)
+                axis.controller.move_to_pos(args.posDesired[ii])
 
-    def spider(self):
-        posDesired = self.rad2Count((0, 0, 0))
-        for ii in range(self.num_axes):
-            axis = self.axes[ii]
-            axis.trap_traj.config.vel_limit = abs(12500)  # 600000 max, 50000 is 1/8 rev per second
-            axis.trap_traj.config.accel_limit = abs(50000)  # 50000 is 1/8 rev per second per second
-            axis.trap_traj.config.decel_limit = abs(50000)
-            axis.controller.move_to_pos(posDesired[ii])
-        posDesired = self.rad2Count((-pi/2, -pi/2, -pi/2))
-        for ii in range(self.num_axes):
-            axis = self.axes[ii]
-            axis.trap_traj.config.vel_limit = abs(12500)  # 600000 max, 50000 is 1/8 rev per second
-            axis.trap_traj.config.accel_limit = abs(50000)  # 50000 is 1/8 rev per second per second
-            axis.trap_traj.config.decel_limit = abs(50000)
-            axis.controller.move_to_pos(posDesired[ii])
-            time.sleep(2)
-        time.sleep(2)
-        posDesired = self.rad2Count((0, 0, 0))
-        for ii in range(self.num_axes):
-            axis = self.axes[ii]
-            axis.trap_traj.config.vel_limit = abs(12500)  # 600000 max, 50000 is 1/8 rev per second
-            axis.trap_traj.config.accel_limit = abs(50000)  # 50000 is 1/8 rev per second per second
-            axis.trap_traj.config.decel_limit = abs(50000)
-            axis.controller.move_to_pos(posDesired[ii])
-            time.sleep(2)
 
-    def trajMoveRad(self, posDesired=(0, 0, 0), velDesired= 1 * pi / 8, accDesired= 1 * pi / 8):
+    def trajMoveCnt(self, posDesired=(0, 0, 0), velDesired=5000, accDesired=50000):
+        args = type("ArgumentPasser", (object,), {})()
+        args.posDesired = posDesired
+        args.velDesired = velDesired
+        args.accDesired = accDesired
+        self.queue.put(args)
+
+    def trajMoveRad(self, posDesired=(0, 0, 0), velDesired= 4 * pi / 8, accDesired= 4 * pi / 8):
         self.trajMoveCnt(self.rad2Count(posDesired),
                          self.r2c_no(velDesired),
                          self.r2c_no(accDesired))
@@ -417,6 +406,7 @@ class Bot:
             if (k_d != 0):
                 axis.controller.config.pos_gain = self.Nm2A * k_p / k_d
                 axis.controller.config.vel_gain = k_d * self.Nm2A
+        rospy.sleep(.2)
         if (perm):
             self.odrvs[0].save_configuration()
             self.odrvs[1].save_configuration()
@@ -432,7 +422,7 @@ class Bot:
             self.odrvs[1].save_configuration()
             time.sleep(2)
 
-    def full_init(self, reset=True):
+    def full_init(self, reset=False, k_p=200, k_d=50):
         # brake resistance
         self.odrvs[0].config.brake_resistance = 0
         self.odrvs[1].config.brake_resistance = 0 #TODO
@@ -457,17 +447,18 @@ class Bot:
             axis.encoder.config.bandwidth = 1000
             axis.encoder.config.use_index = True
             axis.encoder.config.zero_count_on_find_idx = True
-            axis.encoder.config.idx_search_speed = 1
+            #axis.encoder.config.idx_search_speed = 1
             axis.encoder.config.pre_calibrated = False
 
             # motor calibration current
             axis.motor.config.calibration_current = 5
 
             # axis state
-            if (axis.motor.config.pre_calibrated == False):
+            if not axis.motor.config.pre_calibrated:
                 axis.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
+                time.sleep(2)
         print("Done doing setup.")
-        time.sleep(.2)
+        time.sleep(20 if reset else .2)
         print("Saving Configuration...")
         for axis in self.axes:
             axis.motor.config.pre_calibrated = True
@@ -479,8 +470,8 @@ class Bot:
             axis.motor.config.calibration_current = 5
 
             # Set closed loop gains
-            kP_des = self.Nm2A * 100  # pos_gain 2
-            kD_des = self.Nm2A * 50  # vel_gain 0.0015 / 5
+            kP_des = self.Nm2A * k_p  # pos_gain 2
+            kD_des = self.Nm2A * k_d  # vel_gain 0.0015 / 5
 
             axis.controller.config.pos_gain = kP_des / kD_des  # Convert to Cascaded Gain Structure
             # https://github.com/madcowswe/ODrive/blob/451e79519637fdcf33f220f7dae9a28b15e014ba/Firmware/MotorControl/controller.cpp#L151
@@ -530,6 +521,18 @@ class Bot:
     def get_rad_all(self):
         return self.count2Rad(self.get_cnt_all())
 
+    def encoder_count_difference(self, axis):
+        return axis.controller.pos_setpoint-axis.encoder.pos_estimate
+
+    def get_enc_cnt_dif_all(self):
+        return tuple(self.encoder_count_difference(axis) for axis in self.axes)
+
+    def get_enc_deg_dif_all(self):
+        return tuple(self.encoder_count_difference(axis) * self.CPR2RAD * 180 / pi for axis in self.axes)
+
+    def moving(self):
+        return any(abs(dif) > 2 for dif in self.get_enc_deg_dif_all())
+
 # def callback(data, bot, deltaKin):
 #
 #     x = data.x
@@ -555,11 +558,11 @@ def callback(data):
     end_position = (x, y, z)
     tht_des = delta_kin.IK((x, y, z))
 
-    assert (delta_kin.FK(tht_des) - end_position < .1).all()
+#    assert (delta_kin.FK(tht_des) - end_position < .1).all()
     if all([delta_kin.check_constraints(i + 1, end_position, tht_des[i]) for i in range(3)]):
-        print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
-        print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (tht_des[0], tht_des[1], tht_des[2]))
-        bot.trajMoveRad(tht_des, 2 * pi / 8, 2 * pi / 8)
+        # print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
+        # print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (tht_des[0], tht_des[1], tht_des[2]))
+        bot.trajMoveRad(tht_des, 4*pi / 8, 4 * pi / 8)
     else:
         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
@@ -587,6 +590,12 @@ def node():
     rospy.init_node('inverse_kinematics', anonymous=False)
 
     bot = Bot()
+    #bot.full_init(reset=False, k_p=400, k_d=60)
+    #bot.set_gains(400, 60, perm=True)
+    for axis in bot.axes:
+        axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+        axis.controller.vel_setpoint = 0
     # bot.full_init()
     # for i in range(3):
     #    bot.test_one(i, mytime=.1)
@@ -596,26 +605,44 @@ def node():
     # Limit switch init begins here
     limit_flags = [False for _ in range(3)]
     lim_subs = [rospy.Subscriber('lim%d' % i, Bool, callback_lim_init(i)) for i in range(3)]
+
     print("Beginning limit switch initialization...")
     for axis in bot.axes:
         axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
         axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
         axis.controller.vel_setpoint = LIMIT_SWITCH_INIT_VEL
     while not all(limit_flags):
-        time.sleep(.001)
+        rospy.sleep(.001)
     print("Limit switch initialization complete.")
-    pub = rospy.Publisher('delta_position', Point, queue_size=10)
-    rospy.Subscriber('desired_position', Point, callback)
 
+    for axis in bot.axes:
+        axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+        axis.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+        axis.controller.vel_setpoint = 0
+    for axis in bot.axes:
+        axis.controller.config.control_mode = CTRL_MODE_POSITION_CONTROL
+
+    pub = rospy.Publisher('delta_position', Point, queue_size=10)
+    moving_pub = rospy.Publisher('delta_moving', Bool, queue_size=10)
+    degrees_off_pub = rospy.Publisher('degrees_off', Point, queue_size=10)
+    rospy.Subscriber('desired_position', Point, callback)
+    current_pubs = [rospy.Publisher('current%d' % i, Float64, queue_size=100) for i, _ in enumerate(bot.axes)]
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
+        bot.queueHandle()
         thetas = bot.get_rad_all()
         pos = delta_kin.FK(thetas)
         pub.publish(Point(x=pos[0], y=pos[1], z=pos[2]))
+        moving_pub.publish(Bool(bot.moving()))
+        degrees_off_pub.publish(Point(*bot.get_enc_deg_dif_all()))
+        for i, p in enumerate(current_pubs):
+            p.publish(Float64(bot.axes[i].motor.current_control.Iq_measured))
         rate.sleep()
+        #bot.printErrorStates()
 
 
 def main():
+    # Bot().full_init(reset=True ,k_p=400, k_d=60); return  # ONLY UNCOMMENT WHEN ARMS AREN'T ATTACHED EXCLAMATION POINT
     try:
         node()
     except rospy.ROSInterruptException:
