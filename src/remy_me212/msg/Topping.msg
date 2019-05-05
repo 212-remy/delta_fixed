@@ -1,4 +1,4 @@
-geometry_msgs/Point position
+geometry_msgs/PointStamped position
 uint8 ANCHOVY=0
 uint8 OLIVE=1
 uint8 HAM=2

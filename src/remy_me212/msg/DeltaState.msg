@@ -1,2 +1,2 @@
-geometry_msgs/Point position
+geometry_msgs/PointStamped position
 std_msgs/Bool actuator

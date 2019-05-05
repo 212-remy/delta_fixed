@@ -106,7 +106,7 @@ def stage1(pub):
 
     pub.publish(DeltaStateArray(stage1_delta_state_array))
 
-
+#TODO Fix Stage 2
 def stage2(pub):
     global salt_shaker, pizza
     pizza_up = Point(pizza.x, pizza.y, pizza.z + 200)
@@ -125,10 +125,9 @@ def node():
     rospy.Subscriber('stage0_complete_flag', Bool, stage0_callback)
     trajectory_pub = rospy.Publisher('state_arrays', DeltaStateArray, queue_size=10)
     while not stage0_complete_flag:
-        rospy.spinOnce()
+        rospy.sleep(.5)
 
     stage1(trajectory_pub)
-    stage2(trajectory_pub)
 
 
 

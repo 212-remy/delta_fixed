@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, PointStamped, TransformStamped, Vector3, Quaternion
 from std_msgs.msg import Bool, Float64
 from odrive_ros.odrive_interface import ODriveInterfaceAPI as API
 import odrive
@@ -20,6 +20,7 @@ import signal
 import sys
 import numpy as np
 from Queue import Queue
+import tf, tf2_ros
 
 
 #####################################
@@ -30,7 +31,9 @@ realBot = True
 #    import robot212_virtual as bot
 
 pi = np.pi  # 3.1415927
+transformer = tf.TransformerROS()
 
+# 150 DEGREES
 
 class Bot:
 
@@ -551,19 +554,23 @@ class Bot:
 #         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
 
-def callback(data):
-    x = data.x
-    y = data.y
-    z = data.z
+def move_to_point(data):
+    try:
+        pt = transformer.transformPoint('robot_base_plate', data).point
+    except (tf.ConnectivityException, tf.LookupException, tf.ExtrapolationException):
+        return
+    x = pt.x
+    y = pt.y
+    z = pt.z
     end_position = (x, y, z)
-    tht_des = delta_kin.IK((x, y, z))
-
-#    assert (delta_kin.FK(tht_des) - end_position < .1).all()
-    if all([delta_kin.check_constraints(i + 1, end_position, tht_des[i]) for i in range(3)]):
-        # print("x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
-        # print(u"\u03b8\u2081:%3.5f    \u03b8\u2082:%3.5f    \u03b8\u2083:%3.5f" % (tht_des[0], tht_des[1], tht_des[2]))
-        bot.trajMoveRad(tht_des, 4*pi / 8, 4 * pi / 8)
-    else:
+    try:
+        tht_des = delta_kin.IK((x, y, z))
+        if any([not delta_kin.check_constraints(i + 1, end_position, tht_des[i]) for i in range(3)]):
+            raise ValueError('Angles out of workspace')
+        # print("x:%3.5f   y:%3.5f   z:%3.5f" % (x, y, z))
+        # print(u"\u03b8\u2081:%3.5f   \u03b8\u2082:%3.5f   \u03b8\u2083:%3.5f" % (tht_des[0], tht_des[1], tht_des[2]))
+        bot.trajMoveRad(tht_des, 4 * pi / 8, 4 * pi / 8)
+    except ValueError:
         print("Illegal position: x:%3.5f    y:%3.5f    z:%3.5f" % (x, y, z))
 
 
@@ -582,12 +589,26 @@ def callback_lim_init(axis):
     return ret
 
 
+def send_robot_transform():
+    angle = 5 * pi / 6
+    b = tf2_ros.StaticTransformBroadcaster()
+    t = TransformStamped()
+    t.transform.translation.x, t.transform.translation.y, t.transform.translation.z = (0, 0, 0)
+    t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w = tf.transformations.quaternion_from_euler(angle, 0, 0)
+    t.header.stamp = rospy.Time.now()
+    t.header.frame_id = "world"
+    t.child_frame_id = "robot_base_plate"
+    b.sendTransform(t)
+
+
 def node():
     LIMIT_SWITCH_INIT_VEL = -15000 # counts per second
 
     print("Node starting...")
     global bot, delta_kin, lim_subs, limit_flags
     rospy.init_node('inverse_kinematics', anonymous=False)
+    out_of_the_way_pub = rospy.Publisher('delta_out_of_the_way', Bool, queue_size=10)
+    out_of_the_way_pub.publish(Bool(False))
 
     bot = Bot()
     #bot.full_init(reset=False, k_p=400, k_d=60)
@@ -622,23 +643,37 @@ def node():
     for axis in bot.axes:
         axis.controller.config.control_mode = CTRL_MODE_POSITION_CONTROL
 
-    pub = rospy.Publisher('delta_position', Point, queue_size=10)
+    pub = rospy.Publisher('delta_position', PointStamped, queue_size=10)
     moving_pub = rospy.Publisher('delta_moving', Bool, queue_size=10)
     degrees_off_pub = rospy.Publisher('degrees_off', Point, queue_size=10)
-    rospy.Subscriber('desired_position', Point, callback)
+    rospy.Subscriber('desired_position', PointStamped, move_to_point)
     current_pubs = [rospy.Publisher('current%d' % i, Float64, queue_size=100) for i, _ in enumerate(bot.axes)]
+    out_of_the_way_pub = rospy.Publisher('delta_out_of_the_way', Bool, queue_size=10)
+    out_of_the_way_point = PointStamped()
+    out_of_the_way_point.point = Point(165, 75, -810)
+    out_of_the_way_point.header.stamp = rospy.Time.now()
+    out_of_the_way_point.header.frame_id = "robot_base_plate"
+    move_to_point(out_of_the_way_point)
+    send_robot_transform()
     rate = rospy.Rate(10)
+    rospy.sleep(1)
+    out_of_the_way_pub.publish(Bool(True))
     while not rospy.is_shutdown():
         bot.queueHandle()
         thetas = bot.get_rad_all()
-        pos = delta_kin.FK(thetas)
-        pub.publish(Point(x=pos[0], y=pos[1], z=pos[2]))
+        x, y, z = delta_kin.FK(thetas)
+        pos = PointStamped()
+        pos.point = Point(x=x, y=y, z=z)
+        pos.header.stamp = rospy.Time.now()
+        pos.header.frame_id = "robot_base_plate"
+        pub.publish(pos)
         moving_pub.publish(Bool(bot.moving()))
         degrees_off_pub.publish(Point(*bot.get_enc_deg_dif_all()))
         for i, p in enumerate(current_pubs):
             p.publish(Float64(bot.axes[i].motor.current_control.Iq_measured))
         rate.sleep()
         #bot.printErrorStates()
+
 
 
 def main():
